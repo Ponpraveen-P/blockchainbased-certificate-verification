@@ -1,0 +1,124 @@
+-- PART 2 — DATABASE SCHEMA
+-- Blockchain-Based Certificate Verification System
+-- Database: MySQL 8.x
+-- ==========================================================
+
+DROP DATABASE IF EXISTS certchain_db;
+CREATE DATABASE certchain_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE certchain_db;
+
+-- ==========================================================
+-- TABLE 1: Admin
+-- ==========================================================
+CREATE TABLE Admin (
+    admin_id      INT AUTO_INCREMENT PRIMARY KEY,
+    full_name     VARCHAR(100) NOT NULL,
+    email         VARCHAR(150) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,       -- bcrypt hash
+    role          VARCHAR(20)  NOT NULL DEFAULT 'admin',
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- ==========================================================
+-- TABLE 2: Student
+-- ==========================================================
+CREATE TABLE Student (
+    student_id     INT AUTO_INCREMENT PRIMARY KEY,
+    register_number VARCHAR(50) NOT NULL UNIQUE,
+    full_name      VARCHAR(100) NOT NULL,
+    email          VARCHAR(150) NOT NULL UNIQUE,
+    password_hash  VARCHAR(255) NOT NULL,      -- bcrypt hash
+    department     VARCHAR(100) NOT NULL,
+    course         VARCHAR(100) NOT NULL,
+    phone          VARCHAR(20),
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    INDEX idx_student_register_number (register_number),
+    INDEX idx_student_email (email)
+) ENGINE=InnoDB;
+
+-- ==========================================================
+-- TABLE 3: Certificate
+-- ==========================================================
+CREATE TABLE Certificate (
+    certificate_id      VARCHAR(50) PRIMARY KEY,      -- e.g. CERT-2026-000123
+    student_id          INT NOT NULL,
+    certificate_title    VARCHAR(150) NOT NULL,
+    institution         VARCHAR(150) NOT NULL DEFAULT 'ABC Institute of Technology',
+    grade               VARCHAR(10),
+    completion_date     DATE NOT NULL,
+    issue_date          DATE NOT NULL,
+    certificate_file_path VARCHAR(255),              -- path to generated PDF
+    qr_code_path        VARCHAR(255),                -- path to generated QR image
+    certificate_hash    VARCHAR(66) NOT NULL,         -- SHA-256 hash (0x + 64 hex chars)
+    blockchain_tx_hash  VARCHAR(66),                  -- Ethereum transaction hash
+    issued_by           INT NOT NULL,                 -- admin_id who issued it
+    status              ENUM('ACTIVE','REVOKED') DEFAULT 'ACTIVE',
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_certificate_student
+        FOREIGN KEY (student_id) REFERENCES Student(student_id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    CONSTRAINT fk_certificate_admin
+        FOREIGN KEY (issued_by) REFERENCES Admin(admin_id)
+        ON DELETE SET NULL ON UPDATE CASCADE,
+
+    INDEX idx_certificate_hash (certificate_hash),
+    INDEX idx_certificate_student (student_id)
+) ENGINE=InnoDB;
+
+-- ==========================================================
+-- TABLE 4: Verification_Log
+-- ==========================================================
+CREATE TABLE Verification_Log (
+    log_id           INT AUTO_INCREMENT PRIMARY KEY,
+    certificate_id   VARCHAR(50) NOT NULL,
+    verifier_ip      VARCHAR(45),
+    db_hash          VARCHAR(66),
+    blockchain_hash  VARCHAR(66),
+    result           ENUM('VERIFIED','INVALID','TAMPERED','NOT_FOUND') NOT NULL,
+    verified_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_log_certificate
+        FOREIGN KEY (certificate_id) REFERENCES Certificate(certificate_id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    INDEX idx_log_certificate (certificate_id),
+    INDEX idx_log_result (result)
+) ENGINE=InnoDB;
+
+-- ==========================================================
+-- SAMPLE DATA
+-- ==========================================================
+
+-- Sample Admin (password: Admin@123 -> bcrypt hash placeholder, generate real hash at runtime)
+INSERT INTO Admin (full_name, email, password_hash, role) VALUES
+('System Administrator', 'admin@certchain.edu', '$2b$10$examplehashvalueplaceholderxxxxxxxxxxxxxxxxxxxxxxx', 'admin');
+
+-- Sample Students
+INSERT INTO Student (register_number, full_name, email, password_hash, department, course, phone) VALUES
+('CSE2026001', 'Arun Kumar',   'arun.kumar@example.com',   '$2b$10$examplehashplaceholder1', 'Computer Science', 'B.E CSE', '9876543210'),
+('CSE2026002', 'Divya Sri',    'divya.sri@example.com',    '$2b$10$examplehashplaceholder2', 'Computer Science', 'B.E CSE', '9876543211'),
+('ECE2026001', 'Karthik Raja', 'karthik.raja@example.com', '$2b$10$examplehashplaceholder3', 'Electronics',      'B.E ECE', '9876543212');
+
+-- Sample Certificates
+INSERT INTO Certificate
+(certificate_id, student_id, certificate_title, institution, grade, completion_date, issue_date, certificate_file_path, qr_code_path, certificate_hash, blockchain_tx_hash, issued_by, status)
+VALUES
+('CERT-2026-000001', 1, 'Blockchain Fundamentals Course', 'ABC Institute of Technology', 'A+', '2026-05-20', '2026-05-25',
+ '/uploads/certificates/CERT-2026-000001.pdf', '/uploads/certificates/CERT-2026-000001_qr.png',
+ '0x9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08', '0xabc123def456...tx1', 1, 'ACTIVE'),
+
+('CERT-2026-000002', 2, 'Full Stack Web Development', 'ABC Institute of Technology', 'A', '2026-05-22', '2026-05-26',
+ '/uploads/certificates/CERT-2026-000002.pdf', '/uploads/certificates/CERT-2026-000002_qr.png',
+ '0x3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1', '0xabc123def456...tx2', 1, 'ACTIVE');
+
+-- Sample Verification Log
+INSERT INTO Verification_Log (certificate_id, verifier_ip, db_hash, blockchain_hash, result) VALUES
+('CERT-2026-000001', '192.168.1.10',
+ '0x9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+ '0x9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+ 'VERIFIED');
